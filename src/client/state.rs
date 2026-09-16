@@ -211,6 +211,11 @@ impl ClientState {
         } else {
             frame_data
         };
+        // If a guest just connected, honour the full-repaint request so they
+        // receive a coherent initial screen instead of a blit diff.
+        if crate::share::session::take_repaint_request() {
+            self.repaint_pending = true;
+        }
         let encoded = if self.draw_host_cursor {
             self.blit_encoder
                 .encode_with_suppressed_visible_cursor(&frame_data, self.repaint_pending)
@@ -225,6 +230,20 @@ impl ClientState {
         };
         let _ = write_encoded_frame_with_graphics(&mut stdout, &encoded.bytes, graphics);
         let _ = stdout.flush();
+
+        // Tee to connected share guests using a FULL repaint (repaint=true),
+        // never a diff. Full repaints are self-contained: each frame renders
+        // correctly on its own without any prior context. This matters for two
+        // reasons: live guests may connect at any point (a diff applied to the
+        // wrong base produces permanently garbled output), and late-joining
+        // guests replay the session recording from disk frame-by-frame, so
+        // every recorded frame must be independently renderable.
+        if crate::share::session::has_guests() {
+            let share_encoded = crate::protocol::render_ansi::BlitEncoder::new()
+                .encode(&frame_data, true);
+            crate::share::session::broadcast_frame(&share_encoded.bytes);
+        }
+
         self.blit_encoder.commit(frame_data, encoded);
         self.repaint_pending = false;
     }
