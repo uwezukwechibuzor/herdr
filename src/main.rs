@@ -1,4 +1,5 @@
 use std::io;
+use crate::share::network::{copy_to_clipboard, start_background_share};
 
 pub(crate) const HERDR_ENV_VAR: &str = "HERDR_ENV";
 pub(crate) const HERDR_ENV_VALUE: &str = "1";
@@ -57,6 +58,7 @@ mod terminal_modes;
 mod terminal_notify;
 mod terminal_theme;
 mod ui;
+mod share;
 mod update;
 mod workspace;
 mod worktree;
@@ -605,6 +607,8 @@ fn main() -> io::Result<()> {
         println!("       herdr pane <subcommand> ...");
         println!("       herdr session <subcommand> ...");
         println!("       herdr integration <subcommand> ...");
+        println!("       herdr share [--relay <addr>]");
+        println!("       herdr join [--relay <addr>] <code>");
         println!();
         println!("Common commands:");
         for (command, description) in [
@@ -669,6 +673,14 @@ fn main() -> io::Result<()> {
                 "herdr integration <subcommand>",
                 "Manage built-in agent integrations",
             ),
+            (
+                "herdr share",
+                "Start a collaborative terminal session (prints a join code)",
+            ),
+            (
+                "herdr join <code>",
+                "Join a collaborative terminal session using the host's code",
+            ),
         ] {
             println!("  {command:<32} {description}");
         }
@@ -725,6 +737,7 @@ fn main() -> io::Result<()> {
         "--skill",
         "--help",
         "-h",
+        "--share",
     ];
     for arg in &args[1..] {
         let arg_name = arg.split_once('=').map(|(name, _)| name).unwrap_or(arg);
@@ -748,6 +761,9 @@ fn main() -> io::Result<()> {
                 "pane",
                 "session",
                 "integration",
+                "share",
+                "join",
+                "relay",
             ]
             .contains(&arg.as_str())
         {
@@ -765,6 +781,27 @@ fn main() -> io::Result<()> {
             std::process::exit(1);
         }
         return Ok(());
+    }
+
+    // `herdr --share`: start sharing before the TUI launches so guests see
+    // the live herdr session rather than a separate spawned process.
+    if args.iter().any(|a| a == "--share") {
+        let relay_flag = args.windows(2)
+            .find(|w| w[0] == "--relay")
+            .map(|w| w[1].clone());
+        match start_background_share(relay_flag) {
+            Ok(join_cmd) => {
+                copy_to_clipboard(&join_cmd);
+                println!("\n  Session sharing started.\n");
+                println!("  {join_cmd}\n");
+                println!("  (join address copied to clipboard)\n");
+                println!("  Starting herdr — your collaborator can join at any time.\n");
+            }
+            Err(err) => {
+                eprintln!("herdr: could not start session share: {err}");
+                std::process::exit(1);
+            }
+        }
     }
 
     let loaded_config = config::Config::load();

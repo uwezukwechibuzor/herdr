@@ -34,6 +34,7 @@ mod protocol_guard;
 mod runtime;
 mod server;
 mod server_not_running;
+mod share;
 mod spec;
 mod status;
 mod tab;
@@ -125,6 +126,9 @@ pub fn maybe_run(args: &[String]) -> std::io::Result<CommandOutcome> {
         "plugin" => plugin::run_plugin_command(&args[2..])?,
         "integration" => integration::run_integration_command(&args[2..])?,
         "session" => run_session_command(&args[2..])?,
+        "share" => share::run_share_command(&args[2..])?,
+        "join" => share::run_join_command(&args[2..])?,
+        "relay" => share::run_relay_command(&args[2..])?,
         _ => return Ok(CommandOutcome::NotCli),
     };
 
